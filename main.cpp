@@ -1,25 +1,17 @@
-#include <GL/glew.h>
-#include <GL/glut.h>
 #include <iostream>
 #include <fstream>
-#include <string>
 #include <cmath>
-#include <cstdlib>
-#include <ctime>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
 #include "tga.h"
 
+#include "ShaderProgram.h"
+
 
 void initCube();
 void initPoints(int);
 void drawPoints(int);
-
-void loadSource(GLuint &shaderID, std::string name);
-void printCompileInfoLog(GLuint shadID);
-void printLinkInfoLog(GLuint programID);
-void validateProgram(GLuint programID);
 
 bool init();
 void display();
@@ -60,8 +52,8 @@ int g_Width = 1280;                          // Ancho inicial de la ventana
 int g_Height = 720;                         // Altura incial de la ventana
 
 GLuint cubeVAOHandle, pointsVAOHandle;
-GLuint graphicProgramID;
-GLuint computeProgramID[COMPUTE_SHADERS];
+ShaderProgram* graphicProgram;
+ShaderProgram* computeProgram[COMPUTE_SHADERS];
 GLuint locUniformMVPM, locUniformMVM, locUniformPM;
 GLuint locUniformSpriteTex;
 
@@ -113,99 +105,6 @@ inline float ranf( float min = 0.0f, float max = 1.0f )
 {
 	return ((max - min) * rand() / RAND_MAX + min);
 }
-
-// BEGIN: Carga shaders ////////////////////////////////////////////////////////////////////////////////////////////
-
-void loadSource(GLuint &shaderID, std::string name) 
-{
-	std::ifstream f(name.c_str());
-	if (!f.is_open()) 
-	{
-		std::cerr << "File not found " << name.c_str() << std::endl;
-		system("pause");
-		exit(EXIT_FAILURE);
-	}
-	// now read in the data
-	std::string *source;
-	source = new std::string( std::istreambuf_iterator<char>(f),   
-						std::istreambuf_iterator<char>() );
-	f.close();
-   
-	// add a null to the string
-	*source += "\0";
-	const GLchar * data = source->c_str();
-	glShaderSource(shaderID, 1, &data, NULL);
-	delete source;
-}
-
-void printCompileInfoLog(GLuint shadID) 
-{
-GLint compiled;
-	glGetShaderiv( shadID, GL_COMPILE_STATUS, &compiled );
-	if (compiled == GL_FALSE)
-	{
-		GLint infoLength = 0;
-		glGetShaderiv( shadID, GL_INFO_LOG_LENGTH, &infoLength );
-
-		GLchar *infoLog = new GLchar[infoLength];
-		GLint chsWritten = 0;
-		glGetShaderInfoLog( shadID, infoLength, &chsWritten, infoLog );
-
-		std::cerr << "Shader compiling failed:" << infoLog << std::endl;
-		system("pause");
-		delete [] infoLog;
-
-		exit(EXIT_FAILURE);
-	}
-}
-
-void printLinkInfoLog(GLuint programID)
-{
-GLint linked;
-	glGetProgramiv( programID, GL_LINK_STATUS, &linked );
-	if(! linked)
-	{
-		GLint infoLength = 0;
-		glGetProgramiv( programID, GL_INFO_LOG_LENGTH, &infoLength );
-
-		GLchar *infoLog = new GLchar[infoLength];
-		GLint chsWritten = 0;
-		glGetProgramInfoLog( programID, infoLength, &chsWritten, infoLog );
-
-		std::cerr << "Shader linking failed:" << infoLog << std::endl;
-		system("pause");
-		delete [] infoLog;
-
-		exit(EXIT_FAILURE);
-	}
-}
-
-void validateProgram(GLuint programID)
-{
-GLint status;
-    glValidateProgram( programID );
-    glGetProgramiv( programID, GL_VALIDATE_STATUS, &status );
-
-    if( status == GL_FALSE ) 
-	{
-		GLint infoLength = 0;
-		glGetProgramiv( programID, GL_INFO_LOG_LENGTH, &infoLength );
-
-        if( infoLength > 0 ) 
-		{
-			GLchar *infoLog = new GLchar[infoLength];
-			GLint chsWritten = 0;
-            glGetProgramInfoLog( programID, infoLength, &chsWritten, infoLog );
-			std::cerr << "Program validating failed:" << infoLog << std::endl;
-			system("pause");
-            delete [] infoLog;
-
-			exit(EXIT_FAILURE);
-		}
-    }
-}
-
-// END:   Carga shaders ////////////////////////////////////////////////////////////////////////////////////////////
 
 // BEGIN: Inicializa primitivas ////////////////////////////////////////////////////////////////////////////////////
 
@@ -293,12 +192,12 @@ enum {
 	glBindVertexArray (pointsVAOHandle);
 
 	glBindBuffer(GL_ARRAY_BUFFER, ssbo[POS_SSBO]);    
-	GLuint loc = glGetAttribLocation(graphicProgramID, "aPosition");   
+	GLuint loc = glGetAttribLocation(graphicProgram->id(), "aPosition");   
 	glEnableVertexAttribArray(loc); 
 	glVertexAttribPointer( loc, 4, GL_FLOAT, GL_FALSE, 0, (char *)NULL + 0 ); 
 
 	glBindBuffer(GL_ARRAY_BUFFER, ssbo[COL_SSBO]);    
-	GLuint loc2 = glGetAttribLocation(graphicProgramID, "aColor"); 
+	GLuint loc2 = glGetAttribLocation(graphicProgram->id(), "aColor"); 
 	glEnableVertexAttribArray(loc2); 
 	glVertexAttribPointer( loc2, 4, GL_FLOAT, GL_FALSE, 0, (char *)NULL + 0 );
 
@@ -350,8 +249,6 @@ int main(int argc, char *argv[]) {
 }
 
 bool init() {
-	srand (time(NULL));
-
 	glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
  
 	glEnable(GL_DEPTH_TEST);
@@ -363,58 +260,26 @@ bool init() {
 	glEnable (GL_BLEND);
 	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	// Tarea por hacer: Crear el objeto programa para el compute shader
+	// Compute shader programs
 	for(int i = 0; i < COMPUTE_SHADERS; i++) {
-		computeProgramID[i] = glCreateProgram();
+		computeProgram[i] = new ShaderProgram();
+		computeProgram[i]->addShader(GL_COMPUTE_SHADER, computeFilename[i]);
+		computeProgram[i]->compile();
 
-		GLuint computeShaderID = glCreateShader(GL_COMPUTE_SHADER);
-		loadSource(computeShaderID, computeFilename[i]);
-		std::cout << "Compiling Compute Shader " << computeFilename[i] << std::endl;
-		glCompileShader(computeShaderID);
-		printCompileInfoLog(computeShaderID);
-		glAttachShader(computeProgramID[i], computeShaderID);
-
-		glLinkProgram(computeProgramID[i]);
-		printLinkInfoLog(computeProgramID[i]);
-		validateProgram(computeProgramID[i]);
+		computeProgram[i]->setDispatch(NUM_PARTICLES / WORK_GROUP_SIZE, 1, 1);
 	}
 	
 	// Graphic shaders program
-	graphicProgramID = glCreateProgram();
-
-	GLuint vertexShaderID = glCreateShader(GL_VERTEX_SHADER);
-	loadSource(vertexShaderID, "shaders/pbf.vert");
-	std::cout << "Compiling Vertex Shader" << std::endl;
-	glCompileShader(vertexShaderID);
-	printCompileInfoLog(vertexShaderID);
-	glAttachShader(graphicProgramID, vertexShaderID);
-
-	GLuint fragmentShaderID = glCreateShader(GL_FRAGMENT_SHADER);
-	loadSource(fragmentShaderID, "shaders/pbf.frag");
-	std::cout << "Compiling Fragment Shader" << std::endl;
-	glCompileShader(fragmentShaderID);
-	printCompileInfoLog(fragmentShaderID);
-	glAttachShader(graphicProgramID, fragmentShaderID);
-
-	GLuint geometryShaderID = glCreateShader(GL_GEOMETRY_SHADER);
-	loadSource(geometryShaderID, "shaders/oriented_sprite.geom");
-	std::cout << "Compiling Geometry Shader" << std::endl;
-	glCompileShader(geometryShaderID);
-	printCompileInfoLog(geometryShaderID);
-	glAttachShader(graphicProgramID, geometryShaderID);
-
-	// Tarea por hacer: Realizar la misma tarea para el geometry shader (que para el vertex y el fragment shader)
-
-	glLinkProgram(graphicProgramID);
-	printLinkInfoLog(graphicProgramID);
-	validateProgram(graphicProgramID);
-
+	graphicProgram = new ShaderProgram();
+	graphicProgram->addShader(GL_VERTEX_SHADER, "shaders/pbf.vert");
+	graphicProgram->addShader(GL_FRAGMENT_SHADER, "shaders/pbf.frag");
+	graphicProgram->addShader(GL_GEOMETRY_SHADER, "shaders/oriented_sprite.geom");
+	graphicProgram->compile();
 
 	TGAFILE tgaImage;
 	GLuint textId;
 	glGenTextures (1, &textId);
-	if ( LoadTGAFile("white_sphere.tga", &tgaImage) )
-	{
+	if ( LoadTGAFile("textures/white_sphere.tga", &tgaImage) ) {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, textId);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tgaImage.imageWidth, tgaImage.imageHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, tgaImage.imageData);
@@ -425,19 +290,11 @@ bool init() {
 	}
 
 	initPoints();
-	locUniformMVPM = glGetUniformLocation(graphicProgramID, "uModelViewProjMatrix");
-	locUniformMVM = glGetUniformLocation(graphicProgramID, "uModelViewMatrix");
-	locUniformPM = glGetUniformLocation(graphicProgramID, "uProjectionMatrix");
-	locUniformSpriteTex = glGetUniformLocation(graphicProgramID, "uSpriteTex");
+	locUniformMVPM = glGetUniformLocation(graphicProgram->id(), "uModelViewProjMatrix");
+	locUniformMVM = glGetUniformLocation(graphicProgram->id(), "uModelViewMatrix");
+	locUniformPM = glGetUniformLocation(graphicProgram->id(), "uProjectionMatrix");
+	locUniformSpriteTex = glGetUniformLocation(graphicProgram->id(), "uSpriteTex");
 	return true;
-}
-
-void atomicProgram(GLuint p) {
-    glUseProgram(p);
-			
-    glDispatchCompute( NUM_PARTICLES / WORK_GROUP_SIZE, 1, 1 );
-
-	glMemoryBarrier( GL_SHADER_STORAGE_BARRIER_BIT );
 }
  
 void display()
@@ -455,22 +312,23 @@ void display()
 	glm::mat4 mv;  // Model-view matrix
 
     if (animation) {
-        atomicProgram(computeProgramID[PBF_FIRST]);
-        atomicProgram(computeProgramID[PBF_UPDATEGRID]);
-        atomicProgram(computeProgramID[PBF_UPDATENEIGHBORS]);
+		ShaderProgram::useAtomic(computeProgram[PBF_FIRST]);
+        ShaderProgram::useAtomic(computeProgram[PBF_UPDATEGRID]);
+        ShaderProgram::useAtomic(computeProgram[PBF_UPDATENEIGHBORS]);
 
         for(int i = 0; i < ITERATIONS; i++) {
-            atomicProgram(computeProgramID[PBF_CALCULATELAMBDA]);
-            atomicProgram(computeProgramID[PBF_CALCULATEDELTA]);
+            ShaderProgram::useAtomic(computeProgram[PBF_CALCULATELAMBDA]);
+            ShaderProgram::useAtomic(computeProgram[PBF_CALCULATEDELTA]);
         }
 
-        atomicProgram(computeProgramID[PBF_UPDATE]);
-        atomicProgram(computeProgramID[PBF_APPLYVISOSITY]);
-        atomicProgram(computeProgramID[PBF_APPLYVORTICITY]);
-        atomicProgram(computeProgramID[PBF_DEBUG]);
+        ShaderProgram::useAtomic(computeProgram[PBF_UPDATE]);
+        ShaderProgram::useAtomic(computeProgram[PBF_APPLYVISOSITY]);
+        ShaderProgram::useAtomic(computeProgram[PBF_APPLYVORTICITY]);
+
+        ShaderProgram::useAtomic(computeProgram[PBF_DEBUG]);
     }
 
-	glUseProgram(graphicProgramID);
+	ShaderProgram::use(graphicProgram);
 
 	// Dibuja Puntos
 	mvp = Projection * View * ModelCube;
@@ -515,6 +373,7 @@ void keyboard(unsigned char key, int x, int y)
 		break;
 	case 'a': case 'A':
 		animation = !animation;
+		std::cout << (animation ? "Animación activada" : "Animación desactivada");
 		break;
     case ' ':
         initPoints();
