@@ -39,7 +39,16 @@ int lighting = 0;
 
 enum {PBF_FIRST, PBF_UPDATEGRID, PBF_UPDATENEIGHBORS, PBF_CALCULATELAMBDA, PBF_CALCULATEDELTA, PBF_UPDATE, PBF_APPLYVISOSITY, PBF_APPLYVORTICITY, PBF_DEBUG, COMPUTE_SHADERS};
 
-char* computeFilename[] = {"pbf_first.glsl", "pbf_updateGrid.glsl", "pbf_updateNeighbors.glsl", "pbf_calculateLambda.glsl", "pbf_calculateDelta.glsl", "pbf_update.glsl", "pbf_applyViscosity.glsl", "pbf_applyVorticity.glsl", "pbf_debug.glsl", "pbf_debug.glsl"};
+char* computeFilename[] = {"shaders/compute/pbf_first.glsl",
+	"shaders/compute/pbf_updateGrid.glsl",
+	"shaders/compute/pbf_updateNeighbors.glsl",
+	"shaders/compute/pbf_calculateLambda.glsl",
+	"shaders/compute/pbf_calculateDelta.glsl",
+	"shaders/compute/pbf_update.glsl",
+	"shaders/compute/pbf_applyViscosity.glsl",
+	"shaders/compute/pbf_applyVorticity.glsl",
+	"shaders/compute/pbf_debug.glsl",
+	"shaders/compute/pbf_debug.glsl"};
 
  
 float xrot = 24.0f;
@@ -317,7 +326,7 @@ int main(int argc, char *argv[]) {
 	glutInitWindowPosition(50, 50);
 	glutInitWindowSize(g_Width, g_Height);
 	glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
-	glutCreateWindow("Programa Ejemplo");
+	glutCreateWindow("Position Based Fluids");
 	GLenum err = glewInit();
 	if (GLEW_OK != err) {
 	  /* Problem: glewInit failed, something is seriously wrong. */
@@ -374,21 +383,21 @@ bool init() {
 	graphicProgramID = glCreateProgram();
 
 	GLuint vertexShaderID = glCreateShader(GL_VERTEX_SHADER);
-	loadSource(vertexShaderID, "pbf.vert");
+	loadSource(vertexShaderID, "shaders/pbf.vert");
 	std::cout << "Compiling Vertex Shader" << std::endl;
 	glCompileShader(vertexShaderID);
 	printCompileInfoLog(vertexShaderID);
 	glAttachShader(graphicProgramID, vertexShaderID);
 
 	GLuint fragmentShaderID = glCreateShader(GL_FRAGMENT_SHADER);
-	loadSource(fragmentShaderID, "pbf.frag");
+	loadSource(fragmentShaderID, "shaders/pbf.frag");
 	std::cout << "Compiling Fragment Shader" << std::endl;
 	glCompileShader(fragmentShaderID);
 	printCompileInfoLog(fragmentShaderID);
 	glAttachShader(graphicProgramID, fragmentShaderID);
 
 	GLuint geometryShaderID = glCreateShader(GL_GEOMETRY_SHADER);
-	loadSource(geometryShaderID, "oriented_sprite.geom");
+	loadSource(geometryShaderID, "shaders/oriented_sprite.geom");
 	std::cout << "Compiling Geometry Shader" << std::endl;
 	glCompileShader(geometryShaderID);
 	printCompileInfoLog(geometryShaderID);

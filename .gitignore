@@ -26,4 +26,12 @@
 *.exe
 *.out
 *.app
-oriented_sprite.geom
+
+# VS Files
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.opensdf
+*.sdf
+Debug
+ipch
