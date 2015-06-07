@@ -28,10 +28,21 @@ void ShaderProgram::compile() {
 	validateProgram(programID);
 }
 
+void ShaderProgram::uniformMatrix4fv(std::string str, GLuint n, GLboolean b, const GLfloat* pointer) {
+	GLuint loc = glGetUniformLocation(programID, str.c_str());
+	glUniformMatrix4fv( loc, n, b, pointer );
+}
+
+void ShaderProgram::vertexAttribPointer(BufferObject<GL_SHADER_STORAGE_BUFFER>* buffer, std::string str, GLuint size, GLuint type, GLboolean b, GLuint offset, void* pointer) {
+	glBindBuffer(GL_ARRAY_BUFFER, buffer->id());    
+	GLuint loc = glGetAttribLocation(programID, str.c_str()); 
+	glEnableVertexAttribArray(loc); 
+	glVertexAttribPointer( loc, size, type, b, offset, (char *)NULL + 0 );
+}
+
 // BEGIN: Carga shaders ////////////////////////////////////////////////////////////////////////////////////////////
 
-void loadSource(GLuint &shaderID, std::string name) 
-{
+void loadSource(GLuint &shaderID, std::string name) {
 	std::ifstream f(name.c_str());
 	if (!f.is_open()) {
 		std::cerr << "File not found " << name.c_str() << std::endl;

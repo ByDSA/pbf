@@ -21,12 +21,12 @@ layout( std430, binding=3 ) buffer PosPred {
 };
 
 // Celda
-layout( std430, binding=7 ) buffer Cell {
+layout( std430, binding=6 ) buffer Cell {
    uint cell[ ]; 
 };
 
 // GridCells
-layout( std430, binding=8 ) buffer GridCells {
+layout( std430, binding=7 ) buffer GridCells {
    uint gridCells[ ]; 
 };
 

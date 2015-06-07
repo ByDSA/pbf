@@ -25,28 +25,23 @@ coherent layout( std430, binding=4 ) buffer Vorticity {
    coherent vec4 vorticity[ ]; 
 };
 
-// Presión
-coherent layout( std430, binding=5 ) buffer Pressure {
-   coherent float pressure[ ]; 
-};
-
 // Lambda
-coherent layout( std140, binding=6 ) buffer Lambda {
+coherent layout( std140, binding=5 ) buffer Lambda {
    coherent float lambda[ ]; 
 };
 
 // Celda
-coherent layout( std430, binding=7 ) buffer Cell {
+coherent layout( std430, binding=6 ) buffer Cell {
    coherent uint cell[ ]; 
 };
 
 // GridCells
-coherent layout( std430, binding=8 ) buffer GridCells {
+coherent layout( std430, binding=7 ) buffer GridCells {
    coherent uint gridCells[ ]; 
 };
 
 // Neighbors (id)
-coherent layout( std430, binding=9 ) buffer Neighbors {
+coherent layout( std430, binding=8 ) buffer Neighbors {
    coherent uint neighbors[ ]; 
 };
 

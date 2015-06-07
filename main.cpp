@@ -8,8 +8,11 @@
 
 #include "ShaderProgram.h"
 
+#include <vector>
 
-void initCube();
+#include "BufferObject.h"
+
+
 void initPoints(int);
 void drawPoints(int);
 
@@ -42,9 +45,12 @@ char* computeFilename[] = {"shaders/compute/pbf_first.glsl",
 	"shaders/compute/pbf_debug.glsl",
 	"shaders/compute/pbf_debug.glsl"};
 
- 
-float xrot = 24.0f;
-float yrot = -44.2f;
+enum {
+    POS_SSBO, VEL_SSBO, COL_SSBO, POSPRED_SSBO, VORTICITY_SSBO, LAMBDA_SSBO, CELL_SSBO, GRIDCELLS_SSBO, NEIGHBORS_SSBO, SSBO_NUMBER
+};
+
+float xrot = 0.0f;
+float yrot = 0.0f;
 float xdiff = 0.0f;
 float ydiff = 0.0f;
 
@@ -54,7 +60,7 @@ int g_Height = 720;                         // Altura incial de la ventana
 GLuint cubeVAOHandle, pointsVAOHandle;
 ShaderProgram* graphicProgram;
 ShaderProgram* computeProgram[COMPUTE_SHADERS];
-GLuint locUniformMVPM, locUniformMVM, locUniformPM;
+BufferObject<GL_SHADER_STORAGE_BUFFER>* ssbo[SSBO_NUMBER];
 GLuint locUniformSpriteTex;
 
 const unsigned ITERATIONS = 4;
@@ -101,111 +107,56 @@ const int MAX_PART_PER_CELL = 20;                      // Máximo número de partí
 const int CELL_NEIGHBORS     = 27;                     // Celdas vecinas (incluyendo propia)
 const int MAX_PART_NEIGHBORS = CELL_NEIGHBORS*MAX_PART_PER_CELL; // Máximo número de vecinos por celda
 
-inline float ranf( float min = 0.0f, float max = 1.0f )
-{
-	return ((max - min) * rand() / RAND_MAX + min);
-}
-
 // BEGIN: Inicializa primitivas ////////////////////////////////////////////////////////////////////////////////////
 
 // TODO: no generar los buffers cada vez que se llama a la función
-void initPoints() 
-{
-	float* position = new float[NUM_PARTICLES * 4];
-	float* colors = new float[NUM_PARTICLES * 4];
-	float* velocs = new float[NUM_PARTICLES * 4];
+void initPoints() {
+	std::vector<glm::vec4> position(NUM_PARTICLES);
+	std::vector<glm::vec4> colors(NUM_PARTICLES);
+	std::vector<glm::vec4> velocs(NUM_PARTICLES);
 
     float ox = (LIM_X_SUP - LIM_X_INF - side) / 2.0f;
-    float oy = (LIM_Y_SUP - LIM_Y_INF - side) / 4.0f;
+    float oy = (LIM_Y_SUP - LIM_Y_INF - side) / 2.0f;
     float oz = (LIM_Z_SUP - LIM_Z_INF - side) / 2.0f;
 
     int n = 0;
     for(int i = 0; i < ppedge; i++)
         for(int j = 0; j < ppedge; j++)
             for(int k = 0; k < ppedge; k++) {
+                position[n].x = ox + i*inc;
+		        position[n].y = oy + j*inc;
+		        position[n].z = oz + k*inc;
 
-                position[4 * n + 0] = ox + i*inc; // x
-		        position[4 * n + 1] = oy + j*inc; // y
-		        position[4 * n + 2] = oz + k*inc; // z
+                colors[n].r = i / (GLfloat)ppedge;
+		        colors[n].g = j / (GLfloat)ppedge;
+		        colors[n].b = k / (GLfloat)ppedge;
+		        colors[n].a = 1.0f;
 
-                colors[4 * n + 0] = ((float)i) / ppedge; // r
-		        colors[4 * n + 1] = ((float)j) / ppedge; // g
-		        colors[4 * n + 2] = ((float)k) / ppedge; // b
-		        colors[4 * n + 3] = 1.0f;
-
-		        velocs[4 * n + 0] = 0; // x
-		        velocs[4 * n + 1] = 0; // y
-		        velocs[4 * n + 2] = 0; // z
+		        velocs[n].x = 0;
+		        velocs[n].y = 0;
+		        velocs[n].z = 0;
 
                 n++;
             }
-
-
-enum {
-    POS_SSBO, VEL_SSBO, COL_SSBO, POSPRED_SSBO, VORTICITY_SSBO, PRESSURE_SSBO, LAMBDA_SSBO, CELL_SSBO, GRIDCELLS_SSBO, NEIGHBORS_SSBO, SSBO_NUMBER
-};
-
-	GLuint ssbo[SSBO_NUMBER];
-
-	glGenBuffers( SSBO_NUMBER, ssbo);
-
-	// Tarea por hacer: Crear SSBO en lugar de VBO
-	// Tarea por hacer: Activarlos para ser indexados dentro del compute shader
-	// Tarea por hacer: Dentro del VAO, utilizar los SSBO como VBO (no será necesario volver a pasarle los datos)
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[POS_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(float)*4, position, GL_STATIC_DRAW );
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[VEL_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(float)*4, velocs, GL_STATIC_DRAW );
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[COL_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(float)*4, colors, GL_STATIC_DRAW );
-
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[POSPRED_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(float)*4, NULL, GL_STATIC_DRAW );
-
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[VORTICITY_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(float)*4, NULL, GL_STATIC_DRAW );
-
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[PRESSURE_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(float),	NULL, GL_STATIC_DRAW );
-
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[LAMBDA_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(float)*4,	NULL, GL_STATIC_DRAW );
-
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[CELL_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, NUM_PARTICLES * sizeof(unsigned)*4, NULL, GL_STATIC_DRAW );
-
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[NEIGHBORS_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, (MAX_PART_NEIGHBORS+1) * NUM_PARTICLES * sizeof(unsigned)*4, NULL, GL_STATIC_DRAW );
-
-	glBindBuffer( GL_SHADER_STORAGE_BUFFER, ssbo[GRIDCELLS_SSBO] );
-	glBufferData( GL_SHADER_STORAGE_BUFFER, CELL_NUMBER * (MAX_PART_PER_CELL + 1) * sizeof(unsigned)*4, NULL, GL_STATIC_DRAW );
-
-
-
-    for(int i = 0; i < SSBO_NUMBER; i++) {
-		//std::cout << i << std::endl;
-	    glBindBufferBase( GL_SHADER_STORAGE_BUFFER, i, ssbo[i] );
-	}
-
+	
+	// Transferir/reservar memoria
+	ssbo[POS_SSBO]      ->transfer(position, GL_STATIC_DRAW);
+	ssbo[VEL_SSBO]      ->transfer(velocs, GL_STATIC_DRAW);
+	ssbo[COL_SSBO]      ->transfer(colors, GL_STATIC_DRAW);
+	ssbo[POSPRED_SSBO]  ->allocate(NUM_PARTICLES * sizeof(GLfloat)*4, GL_STATIC_DRAW);
+	ssbo[VORTICITY_SSBO]->allocate(NUM_PARTICLES * sizeof(GLfloat)*4, GL_STATIC_DRAW);
+	ssbo[LAMBDA_SSBO]   ->allocate(NUM_PARTICLES * sizeof(GLfloat)*4, GL_STATIC_DRAW);
+	ssbo[CELL_SSBO]     ->allocate(NUM_PARTICLES * sizeof(unsigned), GL_STATIC_DRAW);
+	ssbo[NEIGHBORS_SSBO]->allocate((MAX_PART_NEIGHBORS+1) * NUM_PARTICLES * sizeof(unsigned), GL_STATIC_DRAW);
+	ssbo[GRIDCELLS_SSBO]->allocate(CELL_NUMBER * (MAX_PART_PER_CELL + 1) * sizeof(unsigned), GL_STATIC_DRAW );
 
 	glGenVertexArrays (1, &pointsVAOHandle);
 	glBindVertexArray (pointsVAOHandle);
 
-	glBindBuffer(GL_ARRAY_BUFFER, ssbo[POS_SSBO]);    
-	GLuint loc = glGetAttribLocation(graphicProgram->id(), "aPosition");   
-	glEnableVertexAttribArray(loc); 
-	glVertexAttribPointer( loc, 4, GL_FLOAT, GL_FALSE, 0, (char *)NULL + 0 ); 
-
-	glBindBuffer(GL_ARRAY_BUFFER, ssbo[COL_SSBO]);    
-	GLuint loc2 = glGetAttribLocation(graphicProgram->id(), "aColor"); 
-	glEnableVertexAttribArray(loc2); 
-	glVertexAttribPointer( loc2, 4, GL_FLOAT, GL_FALSE, 0, (char *)NULL + 0 );
+	graphicProgram->vertexAttribPointer(ssbo[POS_SSBO], "aPosition", 4, GL_FLOAT, GL_FALSE, 0, (char *)NULL + 0);
+	graphicProgram->vertexAttribPointer(ssbo[COL_SSBO], "aColor", 4, GL_FLOAT, GL_FALSE, 0, (char *)NULL + 0);
 
 	glBindVertexArray (0);
-
-	delete []position;
-	delete []colors;
-	delete []velocs;
 }
 
 // END: Inicializa primitivas ////////////////////////////////////////////////////////////////////////////////////
@@ -222,7 +173,7 @@ void drawPoints(int numPoints) {
 
 int main(int argc, char *argv[]) {
 	glutInit(&argc, argv); 
-	glutInitWindowPosition(50, 50);
+	glutInitWindowPosition(240, 480);
 	glutInitWindowSize(g_Width, g_Height);
 	glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
 	glutCreateWindow("Position Based Fluids");
@@ -249,7 +200,7 @@ int main(int argc, char *argv[]) {
 }
 
 bool init() {
-	glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
  
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
@@ -257,8 +208,8 @@ bool init() {
 
 	glShadeModel(GL_SMOOTH);
 
-	glEnable (GL_BLEND);
-	glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	// Compute shader programs
 	for(int i = 0; i < COMPUTE_SHADERS; i++) {
@@ -276,6 +227,7 @@ bool init() {
 	graphicProgram->addShader(GL_GEOMETRY_SHADER, "shaders/oriented_sprite.geom");
 	graphicProgram->compile();
 
+	// Sprite points
 	TGAFILE tgaImage;
 	GLuint textId;
 	glGenTextures (1, &textId);
@@ -289,22 +241,23 @@ bool init() {
 		glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	}
 
+	// Crear buffers
+	for(int i = 0; i < SSBO_NUMBER; i++) {
+		ssbo[i] = new BufferObject<GL_SHADER_STORAGE_BUFFER>();
+	}
+
 	initPoints();
-	locUniformMVPM = glGetUniformLocation(graphicProgram->id(), "uModelViewProjMatrix");
-	locUniformMVM = glGetUniformLocation(graphicProgram->id(), "uModelViewMatrix");
-	locUniformPM = glGetUniformLocation(graphicProgram->id(), "uProjectionMatrix");
 	locUniformSpriteTex = glGetUniformLocation(graphicProgram->id(), "uSpriteTex");
 	return true;
 }
  
-void display()
-{
+void display() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glm::mat4 Projection = glm::perspective(45.0f, 1.0f * g_Width / g_Height, 1.0f, 100.0f);
-	
-	glm::vec3 cameraPos = glm::vec3( -13.93*cos( xrot ), -13.93 * sin(yrot), -13.93 );
-	glm::mat4 View = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+	glm::vec3 cameraPos = glm::vec3(15) * glm::vec3( cos( yrot / 100 ), sin(xrot / 100), sin( yrot / 100 ) * cos(xrot /100)) + glm::vec3(6.0f);
+	glm::mat4 View = glm::lookAt(cameraPos, glm::vec3(6.0f, 6.0f, 6.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
 	glm::mat4 ModelCube = glm::translate(glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 2.0f, 2.0f)), glm::vec3(0.0f, 0.0f, 0.0f));
 
@@ -333,11 +286,11 @@ void display()
 	// Dibuja Puntos
 	mvp = Projection * View * ModelCube;
 	mv = View * ModelCube;
-	glUniformMatrix4fv( locUniformMVPM, 1, GL_FALSE, &mvp[0][0] );
-	glUniformMatrix4fv( locUniformMVM, 1, GL_FALSE, &mv[0][0] );
-	glUniformMatrix4fv( locUniformPM, 1, GL_FALSE, &Projection[0][0] );
+	graphicProgram->uniformMatrix4fv( "uModelViewProjMatrix", 1, GL_FALSE, &mvp[0][0] );
+	graphicProgram->uniformMatrix4fv( "uModelViewMatrix", 1, GL_FALSE, &mv[0][0] );
+	graphicProgram->uniformMatrix4fv( "uProjectionMatrix", 1, GL_FALSE, &Projection[0][0] );
 
-	glUniform1i (locUniformSpriteTex, 0);
+	glUniform1i(locUniformSpriteTex, 0);
 
 	drawPoints(NUM_PARTICLES);
 
@@ -380,16 +333,13 @@ void keyboard(unsigned char key, int x, int y)
 	}
 }
  
-void specialKeyboard(int key, int x, int y)
-{
-	if (key == GLUT_KEY_F1)
-	{
+void specialKeyboard(int key, int x, int y) {
+	if (key == GLUT_KEY_F4) {
 		fullscreen = !fullscreen;
  
 		if (fullscreen)
 			glutFullScreen();
-		else
-		{
+		else {
 			glutReshapeWindow(g_Width, g_Height);
 			glutPositionWindow(50, 50);
 		}
@@ -402,8 +352,8 @@ void mouse(int button, int state, int x, int y)
 	{
 		mouseDown = true;
  
-		xdiff = x - yrot/100;
-		ydiff = -y + xrot/100;
+		xdiff = x - yrot;
+		ydiff = -y + xrot;
 	}
 	else
 		mouseDown = false;

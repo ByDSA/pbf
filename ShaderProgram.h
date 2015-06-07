@@ -2,6 +2,8 @@
 #include <GL/glut.h>
 #include <string>
 
+#include "BufferObject.h"
+
 void loadSource(GLuint &shaderID, std::string name);
 void printCompileInfoLog(GLuint shadID);
 void printLinkInfoLog(GLuint programID);
@@ -20,6 +22,10 @@ class ShaderProgram {
 
 		void addShader(GLuint type, std::string path);
 		void compile();
+
+		void uniformMatrix4fv(std::string str, GLuint n, GLboolean b, const GLfloat* pointer);
+
+		void vertexAttribPointer(BufferObject<GL_SHADER_STORAGE_BUFFER>*, std::string str, GLuint size, GLuint type, GLboolean b, GLuint n, void* pointer);
 
 		void setDispatch(GLuint x, GLuint y, GLuint z) {
 			dispatch[0] = x;

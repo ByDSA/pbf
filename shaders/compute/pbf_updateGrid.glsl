@@ -3,12 +3,12 @@
 const int MAX_PART_PER_CELL = 20;
 
 // Celda
-layout( std430, binding=7 ) buffer Cell {
+layout( std430, binding=6 ) buffer Cell {
    uint cell[ ]; 
 };
 
 // GridCells
-layout( std430, binding=8 ) buffer GridCells {
+layout( std430, binding=7 ) buffer GridCells {
    uint gridCells[ ]; 
 };
 
